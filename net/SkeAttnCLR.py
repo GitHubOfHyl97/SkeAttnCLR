@@ -269,30 +269,30 @@ class SkeAttnMask(nn.Module):
             im_q: a batch of query images
             im_k: a batch of key images
         """
-        _, x_pc, _ = self.ske_swap(xq)
+        _, x_swap, _ = self.ske_swap(xq)
         xq = self.view_gen(xq, view)
         if not self.pretrain:
             q, _ = self.encoder_q.backbone(xq)
             return q
         xk = self.view_gen(xk, view)
-        x_pc = self.view_gen(x_pc, view)
+        x_swap = self.view_gen(x_swap, view)
         # compute query features
         q_z = self.encoder_q(xq)  # queries: NxC
         q_z = F.normalize(self.predictor(q_z).squeeze(-1), dim=1)
 
-        q_z_swap, q_p_swap, q_c_swap, mask = self.encoder_q(x_pc, attn_mask=True)  # queries: NxC
+        q_z_swap, q_s, q_ns, mask = self.encoder_q(x_swap, attn_mask=True)  # queries: NxC
         q_z_swap = F.normalize(self.predictor(q_z_swap).squeeze(-1), dim=1)
-        q_p_swap = F.normalize(self.predictor_p(q_p_swap).squeeze(-1), dim=1)
-        q_c_swap = F.normalize(self.predictor_c(q_c_swap).squeeze(-1), dim=1)
+        q_s = F.normalize(self.predictor_p(q_s).squeeze(-1), dim=1)
+        q_ns = F.normalize(self.predictor_c(q_ns).squeeze(-1), dim=1)
 
         # compute key features
         with torch.no_grad():  # no gradient to keys
             # self._momentum_update_key_encoder()  # update the key encoder
             k = [x.clone().detach() for x in self.encoder_k(xk, mask=mask)]
-            k_z, k_p, k_c = k
+            k_z, k_s, k_ns = k
             k_z = F.normalize(k_z.squeeze(-1), dim=1)
-            k_p = F.normalize(k_p.squeeze(-1), dim=1)
-            k_c = F.normalize(k_c.squeeze(-1), dim=1)
+            k_s = F.normalize(k_s.squeeze(-1), dim=1)
+            k_ns = F.normalize(k_ns.squeeze(-1), dim=1)
 
 
         l_pos_z = torch.einsum('nc,nc->n', [q_z, k_z]).unsqueeze(-1)
@@ -305,18 +305,18 @@ class SkeAttnMask(nn.Module):
         # apply temperature
         logits_z /= self.T
 
-        # Loss region p
-        l_pos = torch.einsum('nc,nc->n', [q_p_swap, k_p]).unsqueeze(-1)
-        l_neg_1 = torch.einsum('nc,ck->nk', [q_p_swap, self.queue_z.clone().detach()])
-        l_neg_2 = torch.einsum('nc,nc->n', [q_p_swap, q_c_swap.clone().detach()]).unsqueeze(-1)
+        # Loss region salient
+        l_pos = torch.einsum('nc,nc->n', [q_s, k_s]).unsqueeze(-1)
+        l_neg_1 = torch.einsum('nc,ck->nk', [q_s, self.queue_z.clone().detach()])
+        l_neg_2 = torch.einsum('nc,nc->n', [q_s, q_ns.clone().detach()]).unsqueeze(-1)
         logits_reg_1 = torch.cat([l_pos, l_neg_1, l_neg_2], dim=1)
         # logits_reg_1 = torch.cat([l_pos, l_neg_1], dim=1)
         logits_reg_1 /= self.T
 
-        # Loss region c
-        l_pos = torch.einsum('nc,nc->n', [q_c_swap, k_c]).unsqueeze(-1)
-        l_neg_1 = torch.einsum('nc,ck->nk', [q_c_swap, self.queue_z.clone().detach()])
-        l_neg_2 = torch.einsum('nc,nc->n', [q_c_swap, q_p_swap.clone().detach()]).unsqueeze(-1)
+        # Loss region non-salient
+        l_pos = torch.einsum('nc,nc->n', [q_ns, k_ns]).unsqueeze(-1)
+        l_neg_1 = torch.einsum('nc,ck->nk', [q_ns, self.queue_z.clone().detach()])
+        l_neg_2 = torch.einsum('nc,nc->n', [q_ns, q_s.clone().detach()]).unsqueeze(-1)
         logits_reg_2 = torch.cat([l_pos, l_neg_1, l_neg_2], dim=1)
         # logits_reg_2 = torch.cat([l_pos, l_neg_1], dim=1)
         logits_reg_2 /= self.T
@@ -339,7 +339,7 @@ class SkeAttnMask(nn.Module):
         loss_zc = multi_nce_loss(logits_reg_2, pos_mask_reg2)
 
         # dequeue and enqueue
-        self._dequeue_and_enqueue(k_z, k_p, k_c)
+        self._dequeue_and_enqueue(k_z, k_s, k_ns)
         # self._dequeue_and_enqueue(k_z)
         return loss_z, loss_zp, loss_zc
 
@@ -574,7 +574,7 @@ class SkeAttnMask_GRU(nn.Module):
             im_q: a batch of query images
             im_k: a batch of key images
         """
-        _, x_pc, _ = self.ske_swap(xq)
+        _, x_swap, _ = self.ske_swap(xq)
         xq = self.view_gen(xq, view)
         # Permute and Reshape
         N, C, T, V, M = xq.size()
@@ -584,27 +584,27 @@ class SkeAttnMask_GRU(nn.Module):
             q, _ = self.encoder_q.backbone(im_q)
             return q
         xk = self.view_gen(xk, view)
-        x_pc = self.view_gen(x_pc, view)
+        x_swap = self.view_gen(x_swap, view)
         im_k = xk.permute(0, 2, 3, 1, 4).reshape(N, T, -1)
-        im_pc = x_pc.permute(0, 2, 3, 1, 4).reshape(N, T, -1)
+        im_swap = x_swap.permute(0, 2, 3, 1, 4).reshape(N, T, -1)
 
         # compute query features
         q_z = self.encoder_q(im_q)  # queries: NxC
         q_z = F.normalize(self.predictor(q_z).squeeze(-1), dim=1)
 
-        q_z_swap, q_p_swap, q_c_swap, mask = self.encoder_q(im_pc, mask=None, attn_mask=True)  # queries: NxC
+        q_z_swap, q_s, q_ns, mask = self.encoder_q(im_swap, mask=None, attn_mask=True)  # queries: NxC
         q_z_swap = F.normalize(self.predictor(q_z_swap).squeeze(-1), dim=1)
-        q_p_swap = F.normalize(self.predictor_p(q_p_swap).squeeze(-1), dim=1)
-        q_c_swap = F.normalize(self.predictor_c(q_c_swap).squeeze(-1), dim=1)
+        q_s = F.normalize(self.predictor_p(q_s).squeeze(-1), dim=1)
+        q_ns = F.normalize(self.predictor_c(q_ns).squeeze(-1), dim=1)
 
         # compute key features
         with torch.no_grad():  # no gradient to keys
             # self._momentum_update_key_encoder()  # update the key encoder
             k = [x.clone().detach() for x in self.encoder_k(im_k, mask=mask)]
-            k_z, k_p, k_c = k
+            k_z, k_s, k_ns = k
             k_z = F.normalize(k_z.squeeze(-1), dim=1)
-            k_p = F.normalize(k_p.squeeze(-1), dim=1)
-            k_c = F.normalize(k_c.squeeze(-1), dim=1)
+            k_s = F.normalize(k_s.squeeze(-1), dim=1)
+            k_ns = F.normalize(k_ns.squeeze(-1), dim=1)
 
 
         l_pos_z = torch.einsum('nc,nc->n', [q_z, k_z]).unsqueeze(-1)
@@ -617,17 +617,17 @@ class SkeAttnMask_GRU(nn.Module):
         # apply temperature
         logits_z /= self.T
 
-        # Loss region p
-        l_pos = torch.einsum('nc,nc->n', [q_p_swap, k_p]).unsqueeze(-1)
-        l_neg_1 = torch.einsum('nc,ck->nk', [q_p_swap, self.queue_z.clone().detach()])
-        l_neg_2 = torch.einsum('nc,nc->n', [q_p_swap, q_c_swap.clone().detach()]).unsqueeze(-1)
+        # Loss region salient
+        l_pos = torch.einsum('nc,nc->n', [q_s, k_s]).unsqueeze(-1)
+        l_neg_1 = torch.einsum('nc,ck->nk', [q_s, self.queue_z.clone().detach()])
+        l_neg_2 = torch.einsum('nc,nc->n', [q_s, q_ns.clone().detach()]).unsqueeze(-1)
         logits_reg_1 = torch.cat([l_pos, l_neg_1, l_neg_2], dim=1)
         logits_reg_1 /= self.T
 
-        # Loss region c
-        l_pos = torch.einsum('nc,nc->n', [q_c_swap, k_c]).unsqueeze(-1)
-        l_neg_1 = torch.einsum('nc,ck->nk', [q_c_swap, self.queue_z.clone().detach()])
-        l_neg_2 = torch.einsum('nc,nc->n', [q_c_swap, q_p_swap.clone().detach()]).unsqueeze(-1)
+        # Loss region non-salient
+        l_pos = torch.einsum('nc,nc->n', [q_ns, k_ns]).unsqueeze(-1)
+        l_neg_1 = torch.einsum('nc,ck->nk', [q_ns, self.queue_z.clone().detach()])
+        l_neg_2 = torch.einsum('nc,nc->n', [q_ns, q_s.clone().detach()]).unsqueeze(-1)
         logits_reg_2 = torch.cat([l_pos, l_neg_1, l_neg_2], dim=1)
         logits_reg_2 /= self.T
 
@@ -644,7 +644,7 @@ class SkeAttnMask_GRU(nn.Module):
         loss_zc = multi_nce_loss(logits_reg_2, pos_mask_reg2)
 
         # dequeue and enqueue
-        self._dequeue_and_enqueue(k_z, k_p, k_c)
+        self._dequeue_and_enqueue(k_z, k_s, k_ns)
         return loss_z, loss_zp, loss_zc
     
 class EncoderObj_TR(nn.Module):
@@ -865,30 +865,30 @@ class SkeAttnMask_TR(nn.Module):
             im_q: a batch of query images
             im_k: a batch of key images
         """
-        _, x_pc, _ = self.ske_swap(xq)
+        _, x_swap, _ = self.ske_swap(xq)
         xq = self.view_gen(xq, view)
         if not self.pretrain:
             q, _ = self.encoder_q.backbone(xq)
             return q
         xk = self.view_gen(xk, view)
-        x_pc = self.view_gen(x_pc, view)
+        x_swap = self.view_gen(x_swap, view)
         # compute query features
         q_z = self.encoder_q(xq)  # queries: NxC
         q_z = F.normalize(self.predictor(q_z).squeeze(-1), dim=1)
 
-        q_z_swap, q_p_swap, q_c_swap, mask = self.encoder_q(x_pc, attn_mask=True)  # queries: NxC
+        q_z_swap, q_s, q_ns, mask = self.encoder_q(x_swap, attn_mask=True)  # queries: NxC
         q_z_swap = F.normalize(self.predictor(q_z_swap).squeeze(-1), dim=1)
-        q_p_swap = F.normalize(self.predictor_p(q_p_swap).squeeze(-1), dim=1)
-        q_c_swap = F.normalize(self.predictor_c(q_c_swap).squeeze(-1), dim=1)
+        q_s = F.normalize(self.predictor_p(q_s).squeeze(-1), dim=1)
+        q_ns = F.normalize(self.predictor_c(q_ns).squeeze(-1), dim=1)
 
         # compute key features
         with torch.no_grad():  # no gradient to keys
             # self._momentum_update_key_encoder()  # update the key encoder
             k = [x.clone().detach() for x in self.encoder_k(xk, mask=mask)]
-            k_z, k_p, k_c = k
+            k_z, k_s, k_ns = k
             k_z = F.normalize(k_z.squeeze(-1), dim=1)
-            k_p = F.normalize(k_p.squeeze(-1), dim=1)
-            k_c = F.normalize(k_c.squeeze(-1), dim=1)
+            k_s = F.normalize(k_s.squeeze(-1), dim=1)
+            k_ns = F.normalize(k_ns.squeeze(-1), dim=1)
 
 
         l_pos_z = torch.einsum('nc,nc->n', [q_z, k_z]).unsqueeze(-1)
@@ -901,17 +901,17 @@ class SkeAttnMask_TR(nn.Module):
         # apply temperature
         logits_z /= self.T
 
-        # Loss region p
-        l_pos = torch.einsum('nc,nc->n', [q_p_swap, k_p]).unsqueeze(-1)
-        l_neg_1 = torch.einsum('nc,ck->nk', [q_p_swap, self.queue_z.clone().detach()])
-        l_neg_2 = torch.einsum('nc,nc->n', [q_p_swap, q_c_swap.clone().detach()]).unsqueeze(-1)
+        # Loss region salient
+        l_pos = torch.einsum('nc,nc->n', [q_s, k_s]).unsqueeze(-1)
+        l_neg_1 = torch.einsum('nc,ck->nk', [q_s, self.queue_z.clone().detach()])
+        l_neg_2 = torch.einsum('nc,nc->n', [q_s, q_ns.clone().detach()]).unsqueeze(-1)
         logits_reg_1 = torch.cat([l_pos, l_neg_1, l_neg_2], dim=1)
         logits_reg_1 /= self.T
 
-        # Loss region c
-        l_pos = torch.einsum('nc,nc->n', [q_c_swap, k_c]).unsqueeze(-1)
-        l_neg_1 = torch.einsum('nc,ck->nk', [q_c_swap, self.queue_z.clone().detach()])
-        l_neg_2 = torch.einsum('nc,nc->n', [q_c_swap, q_p_swap.clone().detach()]).unsqueeze(-1)
+        # Loss region non-salient
+        l_pos = torch.einsum('nc,nc->n', [q_ns, k_ns]).unsqueeze(-1)
+        l_neg_1 = torch.einsum('nc,ck->nk', [q_ns, self.queue_z.clone().detach()])
+        l_neg_2 = torch.einsum('nc,nc->n', [q_ns, q_s.clone().detach()]).unsqueeze(-1)
         logits_reg_2 = torch.cat([l_pos, l_neg_1, l_neg_2], dim=1)
         logits_reg_2 /= self.T
 
@@ -928,5 +928,5 @@ class SkeAttnMask_TR(nn.Module):
         loss_zc = multi_nce_loss(logits_reg_2, pos_mask_reg2)
 
         # dequeue and enqueue
-        self._dequeue_and_enqueue(k_z, k_p, k_c)
+        self._dequeue_and_enqueue(k_z, k_s, k_ns)
         return loss_z, loss_zp, loss_zc
