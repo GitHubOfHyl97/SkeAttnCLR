@@ -119,10 +119,10 @@ class SkeAttnMask(nn.Module):
 
             self.predictor = MLP1D(feature_dim, hidden_dim, feature_dim)
             self.predictor.init_weights()
-            self.predictor_p = MLP1D(feature_dim, hidden_dim, feature_dim)
-            self.predictor_p.init_weights()
-            self.predictor_c = MLP1D(feature_dim, hidden_dim, feature_dim)
-            self.predictor_c.init_weights()
+            self.predictor_s = MLP1D(feature_dim, hidden_dim, feature_dim)
+            self.predictor_s.init_weights()
+            self.predictor_ns = MLP1D(feature_dim, hidden_dim, feature_dim)
+            self.predictor_ns.init_weights()
             for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
                 param_k.data.copy_(param_q.data)    # initialize
                 param_k.requires_grad = False       # not update by gradient
@@ -133,14 +133,14 @@ class SkeAttnMask(nn.Module):
             self.register_buffer("queue_ptr_z", torch.zeros(1, dtype=torch.long))
 
             # create the queue
-            self.register_buffer("queue_p", torch.randn(feature_dim, queue_size))
-            self.queue_p = F.normalize(self.queue_p, dim=0)
-            self.register_buffer("queue_ptr_p", torch.zeros(1, dtype=torch.long))
+            self.register_buffer("queue_s", torch.randn(feature_dim, queue_size))
+            self.queue_s = F.normalize(self.queue_s, dim=0)
+            self.register_buffer("queue_ptr_s", torch.zeros(1, dtype=torch.long))
 
             # create the queue
-            self.register_buffer("queue_c", torch.randn(feature_dim, queue_size))
-            self.queue_c = F.normalize(self.queue_c, dim=0)
-            self.register_buffer("queue_ptr_c", torch.zeros(1, dtype=torch.long))
+            self.register_buffer("queue_ns", torch.randn(feature_dim, queue_size))
+            self.queue_ns = F.normalize(self.queue_ns, dim=0)
+            self.register_buffer("queue_ptr_ns", torch.zeros(1, dtype=torch.long))
     @torch.no_grad()
     def momentum_update(self, cur_iter, max_iter):
         """
@@ -166,21 +166,21 @@ class SkeAttnMask(nn.Module):
         bs1 = key1.shape[0]
         bs2 = key2.shape[0]
         ptr_z = int(self.queue_ptr_z)
-        ptr_p = int(self.queue_ptr_p)
-        ptr_c = int(self.queue_ptr_c)
+        ptr_s = int(self.queue_ptr_s)
+        ptr_ns = int(self.queue_ptr_ns)
         gpu_index0 = key0.device.index
         gpu_index1 = key1.device.index
         gpu_index2 = key2.device.index
         self.queue_z[:, (ptr_z + bs0 * gpu_index0):(ptr_z + bs0 * (gpu_index0 + 1))] = key0.T
-        self.queue_p[:, (ptr_p + bs1 * gpu_index1):(ptr_p + bs1 * (gpu_index1 + 1))] = key1.T
-        self.queue_c[:, (ptr_c + bs2 * gpu_index2):(ptr_c + bs2 * (gpu_index2 + 1))] = key2.T
+        self.queue_s[:, (ptr_s + bs1 * gpu_index1):(ptr_s + bs1 * (gpu_index1 + 1))] = key1.T
+        self.queue_ns[:, (ptr_ns + bs2 * gpu_index2):(ptr_ns + bs2 * (gpu_index2 + 1))] = key2.T
 
     @torch.no_grad()
     def update_ptr(self, batch_size):
         assert self.K % batch_size == 0 #  for simplicity
         self.queue_ptr_z[0] = (self.queue_ptr_z[0] + batch_size) % self.K
-        self.queue_ptr_p[0] = (self.queue_ptr_p[0] + batch_size) % self.K
-        self.queue_ptr_c[0] = (self.queue_ptr_c[0] + batch_size) % self.K
+        self.queue_ptr_s[0] = (self.queue_ptr_s[0] + batch_size) % self.K
+        self.queue_ptr_ns[0] = (self.queue_ptr_ns[0] + batch_size) % self.K
 
     @torch.no_grad()
     def ske_swap(self, x):
@@ -419,10 +419,10 @@ class SkeAttnMask_GRU(nn.Module):
 
             self.predictor = MLP1D(feature_dim, feature_dim*2, feature_dim)
             self.predictor.init_weights()
-            self.predictor_p = MLP1D(feature_dim, feature_dim*2, feature_dim)
-            self.predictor_p.init_weights()
-            self.predictor_c = MLP1D(feature_dim, feature_dim*2, feature_dim)
-            self.predictor_c.init_weights()
+            self.predictor_s = MLP1D(feature_dim, feature_dim*2, feature_dim)
+            self.predictor_s.init_weights()
+            self.predictor_ns = MLP1D(feature_dim, feature_dim*2, feature_dim)
+            self.predictor_ns.init_weights()
             for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
                 param_k.data.copy_(param_q.data)    # initialize
                 param_k.requires_grad = False       # not update by gradient
@@ -433,14 +433,14 @@ class SkeAttnMask_GRU(nn.Module):
             self.register_buffer("queue_ptr_z", torch.zeros(1, dtype=torch.long))
 
             # create the queue
-            self.register_buffer("queue_p", torch.randn(feature_dim, queue_size))
-            self.queue_p = F.normalize(self.queue_p, dim=0)
-            self.register_buffer("queue_ptr_p", torch.zeros(1, dtype=torch.long))
+            self.register_buffer("queue_s", torch.randn(feature_dim, queue_size))
+            self.queue_s = F.normalize(self.queue_s, dim=0)
+            self.register_buffer("queue_ptr_s", torch.zeros(1, dtype=torch.long))
 
             # create the queue
-            self.register_buffer("queue_c", torch.randn(feature_dim, queue_size))
-            self.queue_c = F.normalize(self.queue_c, dim=0)
-            self.register_buffer("queue_ptr_c", torch.zeros(1, dtype=torch.long))
+            self.register_buffer("queue_ns", torch.randn(feature_dim, queue_size))
+            self.queue_ns = F.normalize(self.queue_ns, dim=0)
+            self.register_buffer("queue_ptr_ns", torch.zeros(1, dtype=torch.long))
     @torch.no_grad()
     def momentum_update(self, cur_iter, max_iter):
         """
@@ -471,21 +471,21 @@ class SkeAttnMask_GRU(nn.Module):
         bs1 = key1.shape[0]
         bs2 = key2.shape[0]
         ptr_z = int(self.queue_ptr_z)
-        ptr_p = int(self.queue_ptr_p)
-        ptr_c = int(self.queue_ptr_c)
+        ptr_s = int(self.queue_ptr_s)
+        ptr_ns = int(self.queue_ptr_ns)
         gpu_index0 = key0.device.index
         gpu_index1 = key1.device.index
         gpu_index2 = key2.device.index
         self.queue_z[:, (ptr_z + bs0 * gpu_index0):(ptr_z + bs0 * (gpu_index0 + 1))] = key0.T
-        self.queue_p[:, (ptr_p + bs1 * gpu_index1):(ptr_p + bs1 * (gpu_index1 + 1))] = key1.T
-        self.queue_c[:, (ptr_c + bs2 * gpu_index2):(ptr_c + bs2 * (gpu_index2 + 1))] = key2.T
+        self.queue_s[:, (ptr_s + bs1 * gpu_index1):(ptr_s + bs1 * (gpu_index1 + 1))] = key1.T
+        self.queue_ns[:, (ptr_ns + bs2 * gpu_index2):(ptr_ns + bs2 * (gpu_index2 + 1))] = key2.T
 
     @torch.no_grad()
     def update_ptr(self, batch_size):
         assert self.K % batch_size == 0 #  for simplicity
         self.queue_ptr_z[0] = (self.queue_ptr_z[0] + batch_size) % self.K
-        self.queue_ptr_p[0] = (self.queue_ptr_p[0] + batch_size) % self.K
-        self.queue_ptr_c[0] = (self.queue_ptr_c[0] + batch_size) % self.K
+        self.queue_ptr_s[0] = (self.queue_ptr_s[0] + batch_size) % self.K
+        self.queue_ptr_ns[0] = (self.queue_ptr_ns[0] + batch_size) % self.K
 
     @torch.no_grad()
     def ske_swap(self, x):
@@ -715,10 +715,10 @@ class SkeAttnMask_TR(nn.Module):
 
             self.predictor = MLP1D(feature_dim, hidden_dim, feature_dim)
             self.predictor.init_weights()
-            self.predictor_p = MLP1D(feature_dim, hidden_dim, feature_dim)
-            self.predictor_p.init_weights()
-            self.predictor_c = MLP1D(feature_dim, hidden_dim, feature_dim)
-            self.predictor_c.init_weights()
+            self.predictor_s = MLP1D(feature_dim, hidden_dim, feature_dim)
+            self.predictor_s.init_weights()
+            self.predictor_ns = MLP1D(feature_dim, hidden_dim, feature_dim)
+            self.predictor_ns.init_weights()
             for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
                 param_k.data.copy_(param_q.data)    # initialize
                 param_k.requires_grad = False       # not update by gradient
@@ -729,14 +729,14 @@ class SkeAttnMask_TR(nn.Module):
             self.register_buffer("queue_ptr_z", torch.zeros(1, dtype=torch.long))
 
             # create the queue
-            self.register_buffer("queue_p", torch.randn(feature_dim, queue_size))
-            self.queue_p = F.normalize(self.queue_p, dim=0)
-            self.register_buffer("queue_ptr_p", torch.zeros(1, dtype=torch.long))
+            self.register_buffer("queue_s", torch.randn(feature_dim, queue_size))
+            self.queue_s = F.normalize(self.queue_s, dim=0)
+            self.register_buffer("queue_ptr_s", torch.zeros(1, dtype=torch.long))
 
             # create the queue
-            self.register_buffer("queue_c", torch.randn(feature_dim, queue_size))
-            self.queue_c = F.normalize(self.queue_c, dim=0)
-            self.register_buffer("queue_ptr_c", torch.zeros(1, dtype=torch.long))
+            self.register_buffer("queue_ns", torch.randn(feature_dim, queue_size))
+            self.queue_ns = F.normalize(self.queue_ns, dim=0)
+            self.register_buffer("queue_ptr_ns", torch.zeros(1, dtype=torch.long))
     @torch.no_grad()
     def momentum_update(self, cur_iter, max_iter):
         """
@@ -762,21 +762,21 @@ class SkeAttnMask_TR(nn.Module):
         bs1 = key1.shape[0]
         bs2 = key2.shape[0]
         ptr_z = int(self.queue_ptr_z)
-        ptr_p = int(self.queue_ptr_p)
-        ptr_c = int(self.queue_ptr_c)
+        ptr_s = int(self.queue_ptr_s)
+        ptr_ns = int(self.queue_ptr_ns)
         gpu_index0 = key0.device.index
         gpu_index1 = key1.device.index
         gpu_index2 = key2.device.index
         self.queue_z[:, (ptr_z + bs0 * gpu_index0):(ptr_z + bs0 * (gpu_index0 + 1))] = key0.T
-        self.queue_p[:, (ptr_p + bs1 * gpu_index1):(ptr_p + bs1 * (gpu_index1 + 1))] = key1.T
-        self.queue_c[:, (ptr_c + bs2 * gpu_index2):(ptr_c + bs2 * (gpu_index2 + 1))] = key2.T
+        self.queue_s[:, (ptr_s + bs1 * gpu_index1):(ptr_s + bs1 * (gpu_index1 + 1))] = key1.T
+        self.queue_ns[:, (ptr_ns + bs2 * gpu_index2):(ptr_ns + bs2 * (gpu_index2 + 1))] = key2.T
 
     @torch.no_grad()
     def update_ptr(self, batch_size):
         assert self.K % batch_size == 0 #  for simplicity
         self.queue_ptr_z[0] = (self.queue_ptr_z[0] + batch_size) % self.K
-        self.queue_ptr_p[0] = (self.queue_ptr_p[0] + batch_size) % self.K
-        self.queue_ptr_c[0] = (self.queue_ptr_c[0] + batch_size) % self.K
+        self.queue_ptr_s[0] = (self.queue_ptr_s[0] + batch_size) % self.K
+        self.queue_ptr_ns[0] = (self.queue_ptr_ns[0] + batch_size) % self.K
 
     @torch.no_grad()
     def ske_swap(self, x):
