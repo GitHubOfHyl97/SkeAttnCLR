@@ -1,0 +1,93 @@
+#work_dir/singlegpu/1gpu_bz128_pergpu/seed2/Base/spatial_shear_tem_padding/queue_32768/Tem_0.2/with_MLP/skeclr_multi_swap/semantic_swap/64_3_1/st_gcn/agcn_graph/ntu/joint/0_xview_frame64_channel16_feature128_hidden256_epoch300
+work_dir: work_dir/SkeAttnCLR_NTU120_/xsub/joint/pretext
+# <work_dir> / <seed> / <data> / <aug> / <queue> / <Tem> / <MLP> / <arch> / <Param> / <Backbone> / <Graph> / <dataset> / <detail_training>
+
+# feeder
+train_feeder: feeder.ntu_feeder.Feeder_dual
+train_feeder_args:
+  data_path: data/NTU120/NTU120_frame64/xsub/train_position.npy
+  label_path: data/NTU120/NTU120_origin/xsub/train_label.pkl
+  window_size: 64
+  shear_amplitude: 0.5
+  temperal_padding_ratio: 6
+  mmap: True
+  
+# memory feeder for knn
+mem_train_feeder: feeder.ntu_feeder.Feeder_single
+mem_train_feeder_args:
+  data_path: data/NTU120/NTU120_frame64/xsub/train_position.npy
+  label_path: data/NTU120/NTU120_origin/xsub/train_label.pkl 
+  shear_amplitude: 0.5
+  temperal_padding_ratio: 6
+  window_size: 64
+  center: True
+  mmap: True
+mem_test_feeder: feeder.ntu_feeder.Feeder_single
+mem_test_feeder_args:
+  data_path: data/NTU120/NTU120_frame64/xsub/val_position.npy
+  label_path: data/NTU120/NTU120_origin/xsub/val_label.pkl 
+  shear_amplitude: 0.5
+  temperal_padding_ratio: 6
+  window_size: 64
+  center: True
+  mmap: True
+
+# model
+model: net.SkeAttnCLR.SkeAttnMask
+model_args:
+  base_encoder: net.st_gcn.Model
+  pretrain: True
+  feature_dim: 128
+  queue_size: 32768
+  momentum: 0.996
+  Temperature: 0.2
+  in_channels: 3
+  hidden_channels: 64
+  hidden_dim: 256
+  num_class: 120
+  dropout: 0.5
+  Lambda: 2
+  # attn_drop: 0.
+  # proj_drop: 0.
+  # drop_path: 0.1
+  spa_l: 3
+  spa_u: 4
+  tem_l: 4
+  tem_u: 7
+  loss_weight: 0.5
+  heads: 8
+#  norm_layer: None
+  # num_mlp: 2
+  # scale: 1.
+  graph_args:
+    layout: 'ntu-rgb+d'
+    strategy: 'spatial'
+  edge_importance_weighting: True
+
+# optim
+nesterov: False 
+weight_decay: 1e-4
+base_lr: 0.1
+optimizer: SGD
+step: [250]
+
+# training
+device: [5]
+batch_size: 128
+test_batch_size: 128
+num_epoch: 300
+mining_epoch: 300
+start_epoch: 0
+mu: 0.5
+# cross training
+view: 'joint'
+
+# log
+save_interval: 5
+eval_interval: -1
+
+knn_interval: 10
+knn_k: [10, 20, 40]
+knn_classes: 120
+knn_t: 0.1
+KNN_show: [50, 100, 150, 200, 250, 300]
