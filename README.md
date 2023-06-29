@@ -12,6 +12,8 @@ Python >= 3.6, Pytorch >= 1.4
 
 # Pre-Training & Linear Evaluation
 Example for pre-training and linear evaluation of SkeAttnCLR. You can change some settings of **.yaml** files in **config/SkeAttnCLR/NTU60** folder.
-\ sh run_NTU60.sh
+'''
+sh run_NTU60.sh
+'''
 
 
