@@ -15,7 +15,16 @@ Example for pre-training and linear evaluation of SkeAttnCLR. You can change som
 
 ```
 sh run_NTU60.sh
-
+```
+# Citation
+Please cite our paper if you find this repository useful in your resesarch:
+```
+@inproceedings{Hua2023SkeAttnCLR,
+  Title= {Part Aware Contrastive Learning for Self-Supervised Action Recognition},
+  Author= {Yilei Hua, Wenhan Wu, Ce Zheng, Aidong lu, Mengyuan Liu, Chen Chen, Shiqian Wu},
+  Booktitle= {International Joint Conference on Artificial Intelligence},
+  Year= {2023}
+}
 ```
 
 
