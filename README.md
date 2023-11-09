@@ -21,7 +21,7 @@ Please cite our paper if you find this repository useful in your resesarch:
 ```
 @inproceedings{Hua2023SkeAttnCLR,
   Title= {Part Aware Contrastive Learning for Self-Supervised Action Recognition},
-  Author= {Yilei Hua, Wenhan Wu, Ce Zheng, Aidong lu, Mengyuan Liu, Chen Chen, Shiqian Wu},
+  Author= {Hua, Yilei and Wu, Wenhan and Zheng, Ce and Lu, Aidong and Liu, Mengyuan and Chen, Chen and Wu, Shiqian},
   Booktitle= {International Joint Conference on Artificial Intelligence},
   Year= {2023}
 }
